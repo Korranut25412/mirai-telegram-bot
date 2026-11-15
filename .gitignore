@@ -1,0 +1,13 @@
+﻿.env
+state.json
+bot.log*
+*.log
+inbox/
+workspace/
+reports/
+research_notes/
+__pycache__/
+persona.md
+_สถานะล่าสุด.md
+# personal persona/user details — copy system_prompt.example.md to system_prompt.md
+system_prompt.md
