@@ -151,8 +151,11 @@ def log_vocab(text: str) -> int:
     lines += [l.strip() for l in text.splitlines() if l.strip().startswith(("📘", "✏️", "✏"))
               and l.strip().lower() not in old]
     if lines:
+        head = f"## {dt.date.today().isoformat()}"
+        # หัววันที่ใส่ครั้งเดียวต่อวัน (ไฟล์ต่อท้ายเรียงตามเวลา หัววันนี้มีแล้ว = อยู่ท้ายไฟล์)
+        prefix = "" if head in old else f"\n{head}\n"
         with open(workdir() / "vocab.md", "a", encoding="utf-8") as f:
-            f.write(f"\n## {dt.date.today().isoformat()}\n" + "\n".join(lines) + "\n")
+            f.write(prefix + "\n".join(lines) + "\n")
     return len(lines)
 
 
