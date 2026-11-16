@@ -159,6 +159,17 @@ def log_vocab(text: str) -> int:
     return len(lines)
 
 
+def quoted_with_links(m: dict) -> str:
+    """ข้อความที่ผู้ใช้กดตอบกลับ + ใส่ลิงก์ที่ซ่อนอยู่ (text_link เช่นในข่าวเช้า) กลับเข้าไปตรงตำแหน่งเดิม"""
+    text = m.get("text") or m.get("caption") or ""
+    ents = m.get("entities") or m.get("caption_entities") or []
+    links = sorted(((e["offset"] + e["length"], e["url"]) for e in ents if e.get("type") == "text_link"), reverse=True)
+    u = text.encode("utf-16-le")  # offset ของ Telegram นับเป็นหน่วย UTF-16
+    for end, url in links:
+        u = u[:end * 2] + f" ⟨ลิงก์อ้างอิง: {url}⟩".encode("utf-16-le") + u[end * 2:]
+    return u.decode("utf-16-le").strip()
+
+
 # ---------------------------------------------------------------- bot
 class Bot:
     def __init__(self):
@@ -297,6 +308,9 @@ class Bot:
             if att:
                 path = self.tg.download_file(att["file_id"], INBOX, (msg.get("document") or {}).get("file_name") or "photo.jpg")
                 prompt = f"ผู้ใช้ส่งไฟล์มา: {path}\n(อ่านด้วย Read tool)\n\n{text or 'ช่วยอ่านและสรุปไฟล์นี้'}"
+            quoted = quoted_with_links(msg.get("reply_to_message") or {})
+            if prompt and quoted:
+                prompt = f"[พี่กดตอบกลับข้อความนี้]\n{quoted[:4000]}\n[จบข้อความที่อ้าง]\n\n{prompt}"
             if prompt:
                 self.ask(chat_id, prompt, reply_to=msg["message_id"])
 
