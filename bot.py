@@ -79,13 +79,30 @@ def find_claude() -> str:
     return exe
 
 
+DEFAULT_TOOLS = ("WebSearch,WebFetch,Read,Glob,Grep,Skill,mcp__yfinance,mcp__context7,"
+                 "Bash(agent-reach:*),Bash(markitdown:*)")
+
+
+def mcp_config() -> str | None:
+    """เลือกเฉพาะ MCP ที่บอทใช้ (BOT_MCP_SERVERS) จาก ~/.claude.json ตัวที่ต้องเปิดโปรแกรมก่อน (jupyter/anki) ไม่โหลด"""
+    names = [n.strip() for n in (env("BOT_MCP_SERVERS") or "yfinance,context7").split(",") if n.strip()]
+    try:
+        servers = json.loads((Path.home() / ".claude.json").read_text(encoding="utf-8")).get("mcpServers", {})
+    except (OSError, ValueError):
+        return None
+    picked = {n: servers[n] for n in names if n in servers}
+    return json.dumps({"mcpServers": picked}) if picked else None
+
+
 def run_claude(prompt: str, session_id: str | None = None) -> tuple[str, str | None, bool]:
     """คืน (ข้อความตอบ, session_id ใหม่, สำเร็จไหม)"""
     cmd = [find_claude(), "-p",
            "--output-format", "json",
            "--permission-mode", "dontAsk",
-           "--allowedTools", env("ALLOWED_TOOLS", "WebSearch,WebFetch,Read,Glob,Grep"),
+           "--allowedTools", env("ALLOWED_TOOLS") or DEFAULT_TOOLS,
            "--append-system-prompt", read_prompt_file("system_prompt.md")]
+    mcp = mcp_config()
+    cmd += ["--strict-mcp-config"] + (["--mcp-config", mcp] if mcp else [])
     for d in (env("EXTRA_READ_DIRS") or "").split(";"):
         if d.strip():
             cmd += ["--add-dir", d.strip()]
