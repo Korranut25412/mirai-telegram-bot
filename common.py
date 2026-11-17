@@ -63,8 +63,7 @@ class Telegram:
 
     def _send(self, req, timeout):
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                body = json.loads(r.read().decode())
+            body = json.loads(_fetch(req, timeout).decode())
         except urllib.error.HTTPError as e:
             try:
                 body = json.loads(e.read().decode())
@@ -131,9 +130,22 @@ class Telegram:
         dest_dir.mkdir(parents=True, exist_ok=True)
         safe = re.sub(r'[\\/:*?"<>|]', "_", name or Path(remote).name)
         dest = dest_dir / f"{time.strftime('%Y%m%d-%H%M%S')}-{safe}"
-        with urllib.request.urlopen(self.file_base + remote, timeout=120) as r:
-            dest.write_bytes(r.read())
+        dest.write_bytes(_fetch(self.file_base + remote, 120))
         return dest
+
+
+def _fetch(req, timeout: float, tries: int = 3) -> bytes:
+    """urlopen + อ่าน body ลองใหม่เมื่อเน็ตหลุดชั่วคราว (10054/10060) แต่ HTTPError โยนต่อทันที"""
+    for i in range(tries):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read()
+        except urllib.error.HTTPError:
+            raise
+        except (urllib.error.URLError, ConnectionError, TimeoutError):
+            if i == tries - 1:
+                raise
+            time.sleep(2 * (i + 1))
 
 
 def split_text(text: str, size: int = CHUNK_SIZE) -> list[str]:

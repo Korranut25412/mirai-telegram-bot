@@ -11,3 +11,7 @@ persona.md
 _สถานะล่าสุด.md
 # personal persona/user details — copy system_prompt.example.md to system_prompt.md
 system_prompt.md
+
+# local-only: Remotion browser cache (shorts skill) and personal Claude instructions
+.remotion/
+CLAUDE.md

@@ -131,13 +131,18 @@ def run_claude(prompt: str, session_id: str | None = None) -> tuple[str, str | N
         if session_id and "session" in err.lower():
             log.warning("resume ไม่ได้ เริ่มบทสนทนาใหม่: %s", err[:200])
             return run_claude(prompt, None)
+        log.warning("claude exit=%s: %s", p.returncode, err[-300:].replace("\n", " "))
         return f"❌ เรียก Claude ไม่สำเร็จ (exit {p.returncode})\n{err}", session_id, False
 
     text = out.get("result") or ""
     ok = not out.get("is_error") and out.get("subtype") == "success"
     log.info("claude → ok=%s len=%d cost=%s", ok, len(text), out.get("total_cost_usd"))
+    if not ok:
+        log.warning("claude error subtype=%s: %s", out.get("subtype"), text[:300].replace("\n", " "))
     if not ok and "authenticate" in text.lower():
         return "🔑 Claude CLI บนคอมยังไม่ได้ล็อกอิน/หมดอายุ ให้เปิด PowerShell แล้วรัน: claude auth login", session_id, False
+    if not ok and "limit" in text.lower():
+        return f"⏳ โควตา Claude เต็มแล้วค่ะ — {text}\nส่งใหม่หลังเวลานั้นนะคะ", session_id, False
     if not ok:
         if session_id and not text:
             return run_claude(prompt, None)
