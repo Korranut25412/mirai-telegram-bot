@@ -75,7 +75,8 @@ def read_prompt_file(name: str) -> str:
 def find_claude() -> str:
     exe = env("CLAUDE_BIN") or shutil.which("claude") or shutil.which("claude.exe") or shutil.which("claude.cmd")
     if not exe:
-        raise SystemExit("หา claude ไม่เจอ ให้ใส่ path ใน CLAUDE_BIN ในไฟล์ .env")
+        # RuntimeError ไม่ใช่ SystemExit: ถ้าโยน SystemExit ใน worker thread จะหลุดลูปแล้ว thread ตายเงียบ (issue #1)
+        raise RuntimeError("หา claude ไม่เจอ ให้ใส่ path ใน CLAUDE_BIN ในไฟล์ .env")
     return exe
 
 
@@ -96,7 +97,12 @@ def mcp_config() -> str | None:
 
 def run_claude(prompt: str, session_id: str | None = None) -> tuple[str, str | None, bool]:
     """คืน (ข้อความตอบ, session_id ใหม่, สำเร็จไหม)"""
-    cmd = [find_claude(), "-p",
+    try:
+        exe = find_claude()
+    except RuntimeError as e:
+        log.error("%s", e)
+        return f"❌ {e}", session_id, False
+    cmd = [exe, "-p",
            "--output-format", "json",
            "--permission-mode", "dontAsk",
            "--allowedTools", env("ALLOWED_TOOLS") or DEFAULT_TOOLS,
@@ -123,6 +129,9 @@ def run_claude(prompt: str, session_id: str | None = None) -> tuple[str, str | N
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except subprocess.TimeoutExpired:
         return f"⏱️ Claude ใช้เวลานานเกิน {timeout} วินาที เลยยกเลิก ลองถามให้แคบลง", session_id, False
+    except OSError as e:  # CLAUDE_BIN ชี้ไฟล์ที่ไม่มีอยู่ / รันไม่ได้
+        log.error("รัน claude ไม่ได้: %s", e)
+        return f"❌ รัน claude ไม่ได้ ({e.__class__.__name__}) เช็ก CLAUDE_BIN ใน .env", session_id, False
 
     try:
         out = json.loads(p.stdout.strip().splitlines()[-1])
@@ -206,12 +215,16 @@ class Bot:
     # ----- งานในคิว
     def worker(self):
         while True:
-            job = self.jobs.get()
+            chat_id, job = self.jobs.get()
             self.busy = True
             try:
                 job()
-            except Exception as e:
+            except Exception as e:  # งานพังต้องไม่ฆ่า worker และต้องบอกผู้ใช้ ไม่ใช่เงียบ
                 log.exception("job พัง")
+                try:
+                    self.tg.send_text(chat_id, f"❌ งานพัง: {type(e).__name__}: {str(e)[:300]}")
+                except Exception:
+                    pass
             finally:
                 self.busy = False
 
@@ -259,7 +272,7 @@ class Bot:
         waiting = self.jobs.qsize() + (1 if self.busy else 0)
         if waiting:
             self.tg.send_text(chat_id, f"⏳ รอคิวอยู่ {waiting} งาน")
-        self.jobs.put(job)
+        self.jobs.put((chat_id, job))
 
     # ----- ตั้งเวลา
     def scheduler(self):
@@ -346,6 +359,10 @@ class Bot:
                  ("get", "ส่งรายงานเป็นไฟล์"), ("status", "สถานะบอท"), ("help", "วิธีใช้")]])
         except TelegramError:
             pass
+        try:
+            log.info("ใช้ claude ที่ %s", find_claude())
+        except RuntimeError as e:  # เตือนตั้งแต่เปิดบอท ไม่ต้องรอให้มีคนทักก่อน
+            log.warning("%s", e)
         threading.Thread(target=self.worker, daemon=True).start()
         threading.Thread(target=self.scheduler, daemon=True).start()
 
